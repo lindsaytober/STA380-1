@@ -3,8 +3,8 @@ I. Probability Practice
 
 ### Part A
 
-To start, I will list all abbreviations that will be used in the
-solution.
+To start, the abbreviations that will be used in the solution are
+listed.
 
 -   Two categories of users: Truthful Clicker (*TC*) and Random Clicker
     (*RC*)
@@ -868,6 +868,8 @@ the first component, health conscious users are also interested in
 fashion and an eco lifestyle. On the other hand, politics enthusiasts
 are also interested in cars and travel. The age of the users in health
 conscious segment appear to be on the younger side.
+
+### Conclusion
 
 Based on the K-Means clusters and Principal Components Analysis, the
 following segments have been identified:

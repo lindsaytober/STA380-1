@@ -3,6 +3,7 @@ title: 'STA 380 Homework 1: Yuan, Billy'
 author: "Billy Yuan"
 date: "August 6, 2016"
 output: md_document
+  
 ---
 ```{r,include=FALSE}
 set.seed(7)
@@ -17,7 +18,7 @@ library(flexclust)
 
 ### Part A
 
-To start, I will list all abbreviations that will be used in the solution.
+To start, the abbreviations that will be used in the solution are listed.
 
 * Two categories of users: Truthful Clicker (_TC_) and Random Clicker (_RC_)
 * Two outcomes: User answers "Yes" (_Y_) and User answers "No" (_N_)
@@ -518,7 +519,7 @@ colnames(n.tweets.cat) = c("Category","Number of Tweets")
 n.tweets.cat$Category = factor(n.tweets.cat$Category,
                                levels=n.tweets.cat[order(n.tweets.cat[2]),1])
 
-ggplot(mapping=aes(n.tweets.cat[,1],n.tweets.cat[,2]),main="Test") + geom_point(stat="identity") + coord_flip()
+ggplot(mapping=aes(n.tweets.cat[,1],n.tweets.cat[,2])) + geom_point(stat="identity") + coord_flip() + labs(x = 'Number of Tweets', y = 'Tweet Category') + ggtitle("Number of Tweets by Category")
 ```
 
 Just as the histogram of followers were skewed, the distribution of interests is heavily concentrated in the first 5 interests, and has a long tail beyond that. In fact, "chatter" is by far the most popular tweet type, followed by photo sharing and nutrition. Beyond the top 5 categories is a mixture of all types of tweets from online gaming to parenting.
@@ -642,6 +643,8 @@ kable(pca.comp2,caption="Component 2")
 For each component, the "top 8" and "bottom 8" represent categories that have the highest and lowest scores, and show which categories are the most different. Just as the K-Means clusters showed, the PCA analysis reveal a split in health/nutrition tweets and politics/current events tweets. In both components 1 and 2, the "Top 8" categories deal with health/nutrition and the "Bottom 8" categories deal with politics/current events, providing additional evidence that these 2 segments are different.
 
 Both components also reveal additional interests in both the health conscious and politics enthusiast segments. These additional interests provide additional data on how nuanced each segment is. For example, in the first component, health conscious users are also interested in fashion and an eco lifestyle. On the other hand, politics enthusiasts are also interested in cars and travel. The age of the users in health conscious segment appear to be on the younger side.
+
+### Conclusion
 
 Based on the K-Means clusters and Principal Components Analysis, the following segments have been identified:
 
