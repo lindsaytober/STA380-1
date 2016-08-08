@@ -241,7 +241,7 @@ from "going green." He removed buildings with leasing rates below 10% to
 remove some outliers in the data.
 
 Let's take a look at how the data is currently distributed. The plot
-below shots the distribution of leasing rates for both Class A and
+below shows the distribution of leasing rates for both Class A and
 non-Class A buildings.
 
 ![](STA380_HW1_Yuan_Billy_files/figure-markdown_strict/unnamed-chunk-7-1.png)
@@ -439,7 +439,7 @@ risk, and safe.
 
 ### Simulating Trading Days For Our 3 Portfolios
 
-For the simulation, a trading period of 10 days will be simulated 3000
+For the simulation, a trading period of 20 days will be simulated 3000
 times. The portfolios are allocated as follows:
 
 -   Even: 20% to each asset

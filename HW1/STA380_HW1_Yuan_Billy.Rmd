@@ -208,7 +208,7 @@ Up until this point, the analysis has ignored the skew in the data and focused o
 
 The guru used the median rent difference between non-green and green buildings, $2.60, as his estimate of the increase in marginal revenue from "going green." He removed buildings with leasing rates below 10% to remove some outliers in the data. 
 
-Let's take a look at how the data is currently distributed. The plot below shots the distribution of leasing rates for both Class A and non-Class A buildings. 
+Let's take a look at how the data is currently distributed. The plot below shows the distribution of leasing rates for both Class A and non-Class A buildings. 
 
 ```{r,echo=FALSE}
 
@@ -375,7 +375,7 @@ Let's decide how to allocate funds into three types of portfolios: even, risk, a
 
 ### Simulating Trading Days For Our 3 Portfolios
 
-For the simulation, a trading period of 10 days will be simulated 3000 times. The portfolios are allocated as follows:
+For the simulation, a trading period of 20 days will be simulated 3000 times. The portfolios are allocated as follows:
 
 * Even: 20% to each asset
 * Risky: 40% to both EEM and VNQ; 20% to SPY
