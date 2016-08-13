@@ -1,0 +1,833 @@
+---
+title: "STA30_HW2_Yuan_Billy"
+author: "Billy Yuan"
+date: "August 12, 2016"
+output: md_document
+---
+
+```{r,echo=FALSE}
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+library(grid)
+library(knitr)
+
+planes = read.csv("https://raw.githubusercontent.com/billy-yuan/Datasets/master/ABIA_airlines.csv")
+
+planes = planes[,c(-1,-2)] # select all columns except first 2
+
+## convert from num/int to factors
+planes$DepTime = factor(planes$DepTime)
+planes$Month = factor(planes$Month)
+planes$DayOfWeek = factor(planes$DayOfWeek)
+planes$FlightNum = factor(planes$FlightNum)
+planes$Cancelled = factor(planes$Cancelled)
+planes$Diverted = factor(planes$Diverted)
+
+## Change name to "US Airways Inc." The asteriks mean that flight data from October to December
+## were excluded because it merged with American Airlines in 2008.
+levels(planes$Airline)[16] = "US Airways Inc. ***"
+
+## Multi-plot function with shared legend
+## https://github.com/hadley/ggplot2/wiki/Share-a-legend-between-two-ggplot2-graphs
+grid_arrange_shared_legend <- function(..., ncol = length(list(...)), nrow = 1, position = c("bottom", "right")) {
+  
+  plots <- list(...)
+  position <- match.arg(position)
+  g <- ggplotGrob(plots[[1]] + theme(legend.position = position))$grobs
+  legend <- g[[which(sapply(g, function(x) x$name) == "guide-box")]]
+  lheight <- sum(legend$height)
+  lwidth <- sum(legend$width)
+  gl <- lapply(plots, function(x) x + theme(legend.position="none"))
+  gl <- c(gl, ncol = ncol, nrow = nrow)
+  
+  combined <- switch(position,
+                     "bottom" = arrangeGrob(do.call(arrangeGrob, gl),
+                                            legend,
+                                            ncol = 1,
+                                            heights = unit.c(unit(1, "npc") - lheight, lheight)),
+                     "right" = arrangeGrob(do.call(arrangeGrob, gl),
+                                           legend,
+                                           ncol = 2,
+                                           widths = unit.c(unit(1, "npc") - lwidth, lwidth)))
+  grid.newpage()
+  grid.draw(combined)
+  
+}
+# End function
+```
+
+# Flights at ABIA
+
+There comes a time in a person's life when he or she has to travel to a place that is too far to reach by car, and has no choice but to resort to air travel. Unfortunately, air travel comes with a litany of issues, some of which include overpriced food, long security lines and crying babies. Among all of the possible issues associated with air travel, a delayed flight may be the most frustrating for customers. Fortunately, by using flight data from all flights that either landed at or departed from Austin-Bergstrom International Airport (APIA), we could pick flights that have the least probability of getting delayed.
+
+This analysis will address the following three questions that relate to choosing flights that have the least likelihood of getting delayed:
+
+* What are the best times of the year and week to book air travel?
+* Which airlines have the most delays?
+* How does your destination impact the answers to the first 2 questions?
+
+Finally, the analysis will consider any departure delay greater than 10 minutes to be a delayed flight regardless of what percentile this number may be bucketed to. Even if 10 minutes is considered below average for a flight during the Christmas season, a delay of 10 minutes is still infuriating for the customer. 
+
+### Best Times to Travel (on Average)
+
+To begin, let's understand the general trends of delayed flights. The chart below shows how the time of year impacts the number of delayed flights.
+
+```{r, echo=FALSE}
+planes$Delay = ifelse(planes$DepDelay > 10, "Delayed","No Delay") # create dummy column for delays
+
+## bar chart of volume + number of delays. NA's omitted for visual purposes
+ggplot(na.omit(planes[planes$Origin == 'AUS',c('Month','Delay')]), aes(Month, fill=Delay)) + 
+  geom_bar() + ggtitle('Number of Flights Leaving Austin by Month') + 
+  labs(y='Number of Flights')
+
+## ADD TABLE OF % DELAY BY MONTH
+```
+
+```{r, echo=FALSE}
+ggplot(na.omit(planes[planes$Origin=='AUS',c('DayOfWeek','Delay')]), aes(DayOfWeek, fill=Delay)) + 
+  geom_bar() + ggtitle('Number of Flights by Day of Week') + 
+  labs(x='Day of Week (1 = Monday)',y='Number of Flights Leaving Austin by Day of Week')
+
+
+## ADD TABLE OF % DELAYS BY DAY OF WEEK
+```
+
+According to both of these charts, the month and day with the lowest percentage of delayed flights is October and Saturday, respectively. However, these percentages aggregate all destinations and airlines together.
+
+### Airlines to Avoid
+
+Next, let's look at which airlines have the highest percentage of delayed flights. 
+
+```{r,echo=FALSE}
+
+## tables to create % delayed flight charts by airline
+depdelay_num = table(planes$Airline[planes$DepDelay >= 10])
+total_num = table(planes$Airline)
+
+worst_dep_delay= sort((depdelay_num/total_num),decreasing=FALSE)
+
+ggplot(as.data.frame(worst_dep_delay), mapping = aes(x=Var1,y=100*Freq)) + coord_flip() +
+  geom_bar(stat="identity") + ggtitle("% Flights with >= 10 min Departure Delay by Airline") + 
+  labs(x='Airline',y='% of Flights with >=10 min Departure Delay')
+```
+
+<font size="0.5">***US Airways data only available from January-September 2008. October-December data is combined with American Airlines due to a merger.</font>
+
+The two worst airlines are Atlantic Southeast Airlines and Comair. In addition to those two, the percentage of flights with departure delays in 2008 from seven different airlines exceeded 20%. 
+
+However, airlines don't have flights to every city and may specialize in certain regions. For example, in 2008, Southwest Airlines did not have any flights to New York City from Austin. If there are multiple airlines that fly to a city, how can a customer know which airline to take? And if that city has multiple airports, which airport should he or she choose?
+
+### Tale of Cities with Two Airports: Choosing the Best Airlines and Months to Travel
+
+Suppose Mary wants to plan a trip to cities with 2 airports from Austin and is looking to minimize the chance of getting a delay. The cities she chose are New York City, Dallas, and Chicago. She has three questions:
+
+* For what months should Mary book her flights?
+* For each city, which airport should she fly to ?
+* Which airlines should she choose?
+
+Charts of % departure delays by month and airline for each city she plans to visit are shown below.
+
+
+```{r NYC, echo=FALSE}
+
+## Make a new dataframe with only flights leaving from Austin
+planes.dest = planes[planes$Dest != 'AUS',]
+
+## Concatenate airline and airport for the airline plots below
+planes.dest$airline_dest = paste(planes.dest$Airline, planes.dest$Dest)
+
+## Mask that will show only 
+NYC_f = planes.dest$City == 'NYC'
+
+## Add new column for "City" so that cities with multiple airlines can be aggregated
+planes.dest$City[planes.dest$Dest == 'JFK' | planes.dest$Dest == 'EWR' | planes.dest$Dest == 'LGA'] = 'NYC'
+
+## Copy and paste from my code...
+NYC_f = planes.dest$City == 'NYC'
+DAL_f = planes.dest$City == 'Dallas'
+CHI_f = planes.dest$City == 'Chicago'
+
+NYC.flights = (planes.dest[NYC_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+
+JFK.flights = NYC.flights[NYC.flights$Dest == 'JFK',] # Look at JFK
+EWR.flights = NYC.flights[NYC.flights$Dest == 'EWR',]
+
+JFK.delays = table(JFK.flights$Month[JFK.flights$DepDelay >= 10]) / table(JFK.flights[,c('Month')]) # 15 minute dep delay is 75%
+EWR.delays = table(EWR.flights$Month[EWR.flights$DepDelay >= 10]) / table(EWR.flights[,c('Month')])
+
+NYC.delays = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10],
+                   NYC.flights$Month[NYC.flights$DepDelay>=10])
+NYC.total = table(NYC.flights$airline_dest,NYC.flights$Month)
+## End
+
+## Make a new dataframe for only flights going to NYC. This will be used for all the charts.
+
+NYC.flights = (planes.dest[NYC_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+## Charts for NYC start here
+
+# January
+a1.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '1'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '1'])
+
+a1.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '1'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '1'])
+
+a1 = a1.1/a1.2
+
+# February
+a2.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '2'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '2'])
+
+a2.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '2'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '2'])
+
+a2 = a2.1/a2.2
+
+# March
+a3.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '3'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '3'])
+
+a3.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '3'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '3'])
+
+a3 = a3.1/a3.2
+
+# April
+a4.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '4'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '4'])
+
+a4.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '4'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '4'])
+
+a4 = a4.1/a4.2
+
+# May
+a5.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '5'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '5'])
+
+a5.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '5'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '5'])
+
+a5 = a5.1/a5.2
+
+# June
+a6.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '6'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '6'])
+
+a6.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '6'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '6'])
+
+a6 = a6.1/a6.2
+
+# October
+a7.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '7'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '7'])
+
+a7.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '7'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '7'])
+
+a7 = a7.1/a7.2
+
+# August
+a8.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '8'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '8'])
+
+a8.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '8'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '8'])
+
+a8 = a8.1/a8.2
+
+# September
+a9.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '9'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '9'])
+
+a9.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '9'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '9'])
+
+a9 = a9.1/a9.2
+
+
+
+# October
+a10.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '10'],
+      NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '10'])
+
+a10.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '10'],
+      NYC.flights$DayOfWeek[NYC.flights$Month == '10'])
+
+a10 = a10.1/a10.2 # Best day of week to fly
+
+# November
+a11.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '11'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '11'])
+
+a11.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '11'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '11'])
+
+a11 = a11.1/a11.2 # Best day of week to fly
+
+# December
+a12.1 = table(NYC.flights$airline_dest[NYC.flights$DepDelay >=10 & NYC.flights$Month == '12'],
+              NYC.flights$DayOfWeek[NYC.flights$DepDelay>=10 & NYC.flights$Month == '12'])
+
+a12.2 = table(NYC.flights$airline_dest[NYC.flights$Month == '12'],
+              NYC.flights$DayOfWeek[NYC.flights$Month == '12'])
+
+a12 = a12.1/a12.2 # Best day of week to fly
+
+## NYC Plots - % Flights with Departure Delay >= 10 Min. Airline/Day of week by month
+
+nyc1 = ggplot(melt(t(a1)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('January')
+
+nyc2 = ggplot(melt(t(a2)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('February')
+
+nyc3 = ggplot(melt(t(a3)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay')+ 
+  ggtitle('March')
+
+nyc4 = ggplot(melt(t(a4)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + 
+  ggtitle('April')
+
+nyc5 = ggplot(melt(t(a5)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + ggtitle('May')
+
+nyc6 = ggplot(melt(t(a6)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('June')
+
+nyc7 = ggplot(melt(t(a7)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('July')
+
+nyc8 = ggplot(melt(t(a8)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('August')
+
+nyc9 = ggplot(melt(t(a9)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('September')
+
+nyc10 = ggplot(melt(t(a10)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('October')
+
+nyc11 = ggplot(melt(t(a11)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('November')
+
+nyc12 = ggplot(melt(t(a12)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('December')
+```
+
+
+<center><h5>% Flights to NYC with >10 min Departure Delay by Airline</h5></center>
+
+```{r NYC plot,echo=FALSE, fig.width=9,fig.height=11}
+# Multi-plot
+grid_arrange_shared_legend(nyc1,nyc2,nyc3,nyc4,
+                           nyc5,nyc6,nyc7,nyc8,
+                           nyc9,nyc10,nyc11,nyc12,
+                           ncol=3,nrow=4)
+```
+
+
+```{r Dallas,echo=FALSE,warning=FALSE}
+
+## Add new column for "City" so that cities with multiple airlines can be aggregated
+planes.dest$City[planes.dest$Dest == 'DAL' | planes.dest$Dest == 'DFW'] = 'Dallas'
+
+## Copy and paste from my code...
+NYC_f = planes.dest$City == 'NYC'
+DAL_f = planes.dest$City == 'Dallas' & planes.dest$Airline != 'Comair Inc.'
+CHI_f = planes.dest$City == 'Chicago'
+
+DAL.flights = (planes.dest[DAL_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+DAL.flights = DAL.flights[DAL.flights$Dest == 'DAL',] # Look at DAL
+DFW.flights = DAL.flights[DAL.flights$Dest == 'DFW',]
+
+DAL.delays = table(DAL.flights$Month[DAL.flights$DepDelay >= 10]) / table(DAL.flights[,c('Month')]) # 15 minute dep delay is 75%
+DFW.delays = table(DFW.flights$Month[DFW.flights$DepDelay >= 10]) / table(DFW.flights[,c('Month')])
+
+DAL.delays = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10],
+                   DAL.flights$Month[DAL.flights$DepDelay>=10])
+DAL.total = table(DAL.flights$airline_dest,DAL.flights$Month)
+## End
+
+## Make a new dataframe for only flights going to DAL. This will be used for all the charts.
+
+DAL.flights = (planes.dest[DAL_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+## Charts for DAL start here
+
+# January
+d1.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '1'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '1'])
+
+d1.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '1'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '1'])
+
+d1 = d1.1/d1.2
+
+
+# February
+d2.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '2'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '2'])
+
+d2.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '2'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '2'])
+
+d2 = d2.1/d2.2
+
+# March
+d3.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '3'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '3'])
+
+d3.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '3'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '3'])
+
+d3 = d3.1/d3.2
+
+# April
+d4.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '4'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '4'])
+
+d4.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '4'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '4'])
+
+d4 = d4.1/d4.2
+
+# May
+d5.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '5'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '5'])
+
+d5.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '5'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '5'])
+
+d5 = d5.1/d5.2
+
+# June
+d6.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '6'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '6'])
+
+d6.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '6'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '6'])
+
+d6 = d6.1/d6.2
+
+# October
+d7.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '7' &
+                                        DAL.flights$Airline != 'American Eagle Airlines Inc.'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '7'])
+
+d7.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '7' & DAL.flights$Airline != 'American Eagle Airlines Inc.'], DAL.flights$DayOfWeek[DAL.flights$Month == '7' & DAL.flights$Airline != 'American Eagle Airlines Inc.' ])
+
+
+d7 = d7.1/d7.2
+
+# August
+d8.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '8'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '8'])
+
+d8.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '8'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '8'])
+
+d8 = d8.1/d8.2
+
+# September
+d9.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '9'],
+             DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '9'])
+
+d9.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '9'],
+             DAL.flights$DayOfWeek[DAL.flights$Month == '9'])
+
+d9 = d9.1/d9.2
+
+
+
+# October
+d10.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '10'],
+              DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '10'])
+
+d10.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '10'],
+              DAL.flights$DayOfWeek[DAL.flights$Month == '10'])
+
+d10 = d10.1/d10.2 # Best day of week to fly
+
+# November
+d11.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '11'],
+              DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '11'])
+
+d11.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '11'],
+              DAL.flights$DayOfWeek[DAL.flights$Month == '11'])
+
+d11 = d11.1/d11.2 # Best day of week to fly
+
+# December
+d12.1 = table(DAL.flights$airline_dest[DAL.flights$DepDelay >=10 & DAL.flights$Month == '12'],
+              DAL.flights$DayOfWeek[DAL.flights$DepDelay>=10 & DAL.flights$Month == '12'])
+
+d12.2 = table(DAL.flights$airline_dest[DAL.flights$Month == '12'],
+              DAL.flights$DayOfWeek[DAL.flights$Month == '12'])
+
+d12 = d12.1/d12.2 # Best day of week to fly
+
+## DAL Plots - % Flights with Departure Delay >= 10 Min. Airline/Day of week by month
+
+DAL1 = ggplot(melt(t(d1)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('January')
+
+DAL2 = ggplot(melt(t(d2)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('February')
+
+DAL3 = ggplot(melt(t(d3)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay')+ 
+  ggtitle('March')
+
+DAL4 = ggplot(melt(t(d4)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + 
+  ggtitle('April')
+
+DAL5 = ggplot(melt(t(d5)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + ggtitle('May')
+
+DAL6 = ggplot(melt(t(d6)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('June')
+
+DAL7 = ggplot(melt(t(d7)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('July')
+
+DAL8 = ggplot(melt(t(d8)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('August')
+
+DAL9 = ggplot(melt(t(d9)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('September')
+
+DAL10 = ggplot(melt(t(d10)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('October')
+
+DAL11 = ggplot(melt(t(d11)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('November')
+
+DAL12 = ggplot(melt(t(d12)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('December')
+```
+
+
+<center><h5>% Flights to DAL with >10 min Departure Delay by Airline</h5></center>
+  
+```{r Dallas plot,echo=FALSE, fig.width=9,fig.height=11, warning=FALSE}
+# Multi-plot
+grid_arrange_shared_legend(DAL1,DAL2,DAL3,DAL4,
+                           DAL5,DAL6,DAL7,DAL8,
+                           DAL9,DAL10,DAL11,DAL12,
+                           ncol=3,nrow=4)
+```
+
+```{r CHI, echo=FALSE}
+
+## Add new column for "City" so that cities with multiple airlines can be aggregated
+planes.dest$City[planes.dest$Dest == 'ORD' | planes.dest$Dest == 'MDW'] = 'Chicago'
+
+## Copy and paste from my code...
+NYC_f = planes.dest$City == 'NYC'
+DAL_f = planes.dest$City == 'Dallas'
+CHI_f = planes.dest$City == 'Chicago' & planes.dest$Airline != 'Mesa Airlines Inc.'
+
+CHI.flights = (planes.dest[CHI_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+
+ORD.flights = CHI.flights[CHI.flights$Dest == 'ORD',] # Look at ORD
+MDW.flights = CHI.flights[CHI.flights$Dest == 'MDW',]
+
+ORD.delays = table(ORD.flights$Month[ORD.flights$DepDelay >= 10]) / table(ORD.flights[,c('Month')]) # 15 minute dep delay is 75%
+MDW.delays = table(MDW.flights$Month[MDW.flights$DepDelay >= 10]) / table(MDW.flights[,c('Month')])
+
+CHI.delays = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10],
+                   CHI.flights$Month[CHI.flights$DepDelay>=10])
+CHI.total = table(CHI.flights$airline_dest,CHI.flights$Month)
+## End
+
+## Make a new dataframe for only flights going to CHI. This will be used for all the charts.
+
+CHI.flights = (planes.dest[CHI_f,][,c('Month','DayOfWeek','Airline', 'Dest', 'DepDelay','airline_dest')])
+
+## Charts for NYC start here
+
+# January
+c1.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '1'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '1'])
+
+c1.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '1'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '1'])
+
+c1 = c1.1/c1.2
+
+# February
+c2.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '2'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '2'])
+
+c2.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '2'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '2'])
+
+c2 = c2.1/c2.2
+
+# March
+c3.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '3'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '3'])
+
+c3.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '3' & 
+                                        CHI.flights$Airline != 'Mesa Airlines Inc.'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '3' &
+                                   CHI.flights$Airline != 'Mesa Airlines Inc.'])
+
+c3 = c3.1/c3.2
+
+# April
+c4.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '4'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '4'])
+
+c4.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '4'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '4'])
+
+c4 = c4.1/c4.2
+
+# May
+c5.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '5'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '5'])
+
+c5.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '5'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '5'])
+
+c5 = c5.1/c5.2
+
+# June
+c6.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '6'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '6'])
+
+c6.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '6'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '6'])
+
+c6 = c6.1/c6.2
+
+# October
+c7.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '7'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '7'])
+
+c7.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '7'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '7'])
+
+c7 = c7.1/c7.2
+
+# August
+c8.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '8'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '8'])
+
+c8.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '8'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '8'])
+
+c8 = c8.1/c8.2
+
+# September
+c9.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '9'],
+             CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '9'])
+
+c9.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '9'],
+             CHI.flights$DayOfWeek[CHI.flights$Month == '9'])
+
+c9 = c9.1/c9.2
+
+
+
+# October
+c10.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '10'],
+              CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '10'])
+
+c10.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '10'],
+              CHI.flights$DayOfWeek[CHI.flights$Month == '10'])
+
+c10 = c10.1/c10.2 # Best day of week to fly
+
+# November
+c11.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '11'],
+              CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '11'])
+
+c11.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '11'],
+              CHI.flights$DayOfWeek[CHI.flights$Month == '11'])
+
+c11 = c11.1/c11.2 # Best day of week to fly
+
+# December
+c12.1 = table(CHI.flights$airline_dest[CHI.flights$DepDelay >=10 & CHI.flights$Month == '12'],
+              CHI.flights$DayOfWeek[CHI.flights$DepDelay>=10 & CHI.flights$Month == '12'])
+
+c12.2 = table(CHI.flights$airline_dest[CHI.flights$Month == '12'],
+              CHI.flights$DayOfWeek[CHI.flights$Month == '12'])
+
+c12 = c12.1/c12.2 # Best day of week to fly
+
+## CHI Plots - % Flights with Departure Delay >= 10 Min. Airline/Day of week by month
+
+chi1 = ggplot(melt(t(c1)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('January')
+
+chi2 = ggplot(melt(t(c2)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('February')
+
+chi3 = ggplot(melt(t(c3)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay')+ 
+  ggtitle('March')
+
+chi4 = ggplot(melt(t(c4)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + 
+  ggtitle('April')
+
+chi5 = ggplot(melt(t(c5)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') + ggtitle('May')
+
+chi6 = ggplot(melt(t(c6)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('June')
+
+chi7 = ggplot(melt(t(c7)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('July')
+
+chi8 = ggplot(melt(t(c8)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('August')
+
+chi9 = ggplot(melt(t(c9)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('September')
+
+chi10 = ggplot(melt(t(c10)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('October')
+
+chi11 = ggplot(melt(t(c11)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('November')
+
+chi12 = ggplot(melt(t(c12)), mapping=aes(x=Var1,y=value,colour=Var2)) + 
+  geom_line() + coord_cartesian(ylim=c(0,1)) + 
+  scale_x_continuous(breaks=seq(1,7,1)) +
+  labs(x='Day of the Week (1 = Monday)', y='% Flights, Dep Delay') +
+  ggtitle('December')
+```
+
+<center><h5>% Flights to Chicago with >10 min Departure Delay by Airline</h5></center>
+  
+```{r CHI plot,echo=FALSE, fig.width=9,fig.height=11, warning=FALSE}
+# Multi-plot
+grid_arrange_shared_legend(chi1,chi2,chi3,chi4,
+                           chi5,chi6,chi7,chi8,
+                           chi9,chi10,chi11,chi12,
+                           ncol=3,nrow=4)
+```
+
+According to these 3 groups of charts, September and October appear to be the best times to fly, which is consistent with what the very first chart of this analysis showed. However, the best airlines for each city vary. Below is a sample itinerary that Mary could use:
+
+```{r, echo=FALSE}
+
+nyc_it = c("JetBlue Airways JFK","October","Wednesday")
+dal_it = c("American Airlines DFW", "November", "Tuesday")
+chi_it = c("Southwest Airlines MDW", "September", "Wednesday")
+
+itinerary = rbind(nyc_it,dal_it,chi_it)
+rownames(itinerary) = c("New York City", "Dallas", "Chicago")
+colnames(itinerary) = c("Airline and Airport", "Month", "Day of Week")
+kable(itinerary, caption='Sample Itinerary')
+```
+
+Segmenting data to match the scope of the problem is extremely important. In this case, the problem is figuring out which airlines to take to cities that have 2 airports. For example, although Southwest Airlines had the second-highest percentage of delayed flights when including all of its destinations, its flights to Midway Airport in Chicago are relatively punctual between June and September. However, because this analysis only contains data fron 2008, one-off events such as storms or emergencies may skew the data. Regardless of this limitation, the general trends seem to be consistent: flights during the holidays experience the most delays, and flights during the middle of the week have the least delays. Beyond this, generalizations are slightly harder to make.
