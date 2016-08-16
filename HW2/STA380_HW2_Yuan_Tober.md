@@ -566,7 +566,7 @@ author:
 <td align="left">69.70 %</td>
 </tr>
 <tr class="even">
-<td align="left">cottHillis</td>
+<td align="left">ScottHillis</td>
 <td align="left">16.90 %</td>
 <td align="left">21.74 %</td>
 </tr>
@@ -576,7 +576,7 @@ author:
 <td align="left">51.79 %</td>
 </tr>
 <tr class="even">
-<td align="left">anEeLyn</td>
+<td align="left">TanEeLyn</td>
 <td align="left">39.02 %</td>
 <td align="left">38.18 %</td>
 </tr>
