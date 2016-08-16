@@ -313,7 +313,7 @@ A multinomial logistic regression model was trained to predict authors
 on the 100 principal components for all training articles, then applied
 to the testing articles to predict author identities in the
 out-of-sample data set. Multinomial logistic regression using PCA
-resulted in a test accuracy of 65.46%.
+resulted in a test accuracy of 55.28%.
 
 #### Model 2: Naive Bayes
 
@@ -331,7 +331,7 @@ Using the training table of multinomial probability vectors by author,
 log probabilities for each article within the testing data set were
 calculated under the Naive Bayes model. Whichever author resulted in the
 highest sum of log probabilities was taken as the 'predicted' author.
-The Naive Bayes model resulted in a test accuracy of 55.28%.
+The Naive Bayes model resulted in a test accuracy of 64.56%.
 
 ### Model Evaluation
 
