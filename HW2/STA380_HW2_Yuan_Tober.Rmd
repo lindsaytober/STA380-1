@@ -1078,7 +1078,7 @@ Two models were selected to predict author attribution of the testing articles: 
 ```
 Conducting Principal Compenent Analysis (PCA) on the training articles provided contexts, or loadings, to apply to the Document Term Matrix.  Given each of the 50 authors had 50 articles included in the training set, PCA resulted in 2,500 principal components to capture variance across the 2,500 documents within the training corpus.  With limitations on computational power, the first 100 principal components were selected for running multinomial logistic regression.  This subset of 100 principal components accounted for 45% of the variance and still took a significant time to process.
 
-A multinomial logistic regression model was trained to predict authors on the 100 principal components for all training articles, then applied to the testing articles to predict author identities in the out-of-sample data set. Multinomial logistic regression using PCA resulted in a test accuracy of 65.46%.
+A multinomial logistic regression model was trained to predict authors on the 100 principal components for all training articles, then applied to the testing articles to predict author identities in the out-of-sample data set. Multinomial logistic regression using PCA resulted in a test accuracy of 55.28%.
 
 #### Model 2: Naive Bayes
 ```{r NB_model,include=FALSE}
@@ -1158,7 +1158,7 @@ A multinomial logistic regression model was trained to predict authors on the 10
 ```
 For Naive Bayes, the Document Term Matrix was used to create a training table of multinomial probability vectors by author. Each multinomial probability vector was calculated by aggregating the scores by term across documents written by a given author, adding a smoothing factor (1/2500) to ensure non-zero totals, and taking the respective probability for that term against the author's full volume of terms.  The resulting multinomial probability vectors provide a 'bag of words' situational probability of selecting that word at random from within the host of articles written by that author.
 
-Using the training table of multinomial probability vectors by author, log probabilities for each article within the testing data set were calculated under the Naive Bayes model.  Whichever author resulted in the highest sum of log probabilities was taken as the 'predicted' author. The Naive Bayes model resulted in a test accuracy of 55.28%.
+Using the training table of multinomial probability vectors by author, log probabilities for each article within the testing data set were calculated under the Naive Bayes model.  Whichever author resulted in the highest sum of log probabilities was taken as the 'predicted' author. The Naive Bayes model resulted in a test accuracy of 64.56%.
 
 
 ### Model Evaluation
