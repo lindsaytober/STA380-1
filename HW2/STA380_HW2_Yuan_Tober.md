@@ -134,7 +134,7 @@ flights.
 </table>
 
 According to both of these charts, the month and day with the lowest
-percentage of delayed flights is October and Saturday, respectively.
+percentage of delayed flights is October and Wednesday, respectively.
 However, these percentages aggregate all destinations and airlines
 together.
 
